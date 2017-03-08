@@ -10,6 +10,14 @@ int CalcForwardFlowUsingDaisyFilterFlowMethod(const cv::Mat &img1, const cv::Mat
 	spm.imLeftOrigin = img1.clone();
 	spm.imRightOrigin = img2.clone();
 
+#if USE_DEEP_FEATURES
+	string file_c, file_s1, root;
+	root = "D:\\MSRA\\Code\\Project\\DaisyFilterFlow\\DaisyFilterFlow\\DaisyFilterFlow\\test_smooth\\";
+	file_c = "Ndata_C.txt";
+	file_s1 = "Ndata_S1.txt";
+	spm.ReadDeepFeatures(file_c, file_s1);
+#endif
+	
 	// create superpixels
 	spm.CreateAndOrganizeSuperpixels();
 
@@ -26,6 +34,10 @@ int CalcForwardFlowUsingDaisyFilterFlowMethod(const cv::Mat &img1, const cv::Mat
 	cv::Mat_<cv::Vec3b> fwReSrcImg;
 	spm.WarpingReverseAffine(spm.bestLeftDaisyFlow, spm.imRightOrigin, fwReSrcImg, spm.scaleSCoefRight);
 	spm.WriteOutImageResult(fwReSrcImg, "Src_Img_Warpped_from_Dst_Img_By_Forward_Flow");
+
+#if USE_DEEP_FEATURES
+	spm.FreeData();
+#endif
 	return 0;
 }
 

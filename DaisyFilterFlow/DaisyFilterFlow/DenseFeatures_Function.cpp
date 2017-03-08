@@ -256,5 +256,7 @@ int NewlyExtractAndComputeSubImageDaisyDescriptorsCost( daisy *desc, cv::Mat_<fl
 			ptr += DAISY_FEATURE_LENGTH;
 		}
 	}
+	
+	
 	return 1;
 }

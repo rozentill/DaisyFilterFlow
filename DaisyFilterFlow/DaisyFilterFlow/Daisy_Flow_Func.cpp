@@ -769,10 +769,90 @@ void SuperPatchmatch::ReadFlowFile( const char *flowFile, cv::Mat_<cv::Vec2f> &f
 
 	delete [] fBuffer;
 }
+void MakeColorWheel(std::vector<cv::Scalar>& colorwheel)
+{
+	int RY = 15;
+	int YG = 6;
+	int GC = 4;
+	int CB = 11;
+	int BM = 13;
+	int MR = 6;
+	int i;
+	for (i = 0; i < RY; i++) colorwheel.push_back(cv::Scalar(255, 255 * i / RY, 0));
+	for (i = 0; i < YG; i++) colorwheel.push_back(cv::Scalar(255 - 255 * i / YG, 255, 0));
+	for (i = 0; i < GC; i++) colorwheel.push_back(cv::Scalar(0, 255, 255 * i / GC));
+	for (i = 0; i < CB; i++) colorwheel.push_back(cv::Scalar(0, 255 - 255 * i / CB, 255));
+	for (i = 0; i < BM; i++) colorwheel.push_back(cv::Scalar(255 * i / BM, 0, 255));
+	for (i = 0; i < MR; i++) colorwheel.push_back(cv::Scalar(255, 0, 255 - 255 * i / MR));
+}
 
+void MotionToColor(const cv::Mat_<cv::Vec2f> flow, cv::Mat& color)
+{
+	if (color.empty())
+		color.create(flow.rows, flow.cols, CV_8UC3);
+	static std::vector<cv::Scalar> colorwheel;
+	if (colorwheel.empty())
+		MakeColorWheel(colorwheel);
+	// determine motion range:     
+	float maxrad = -1;
+	// Find max flow to normalize fx and fy     
+	for (int i = 0; i < flow.rows; ++i)
+	{
+		for (int j = 0; j < flow.cols; ++j)
+		{
+			cv::Vec2f flow_at_point = cv::Vec2f(flow[i][j][0], flow[i][j][1]);
+			float fx = flow_at_point[0];
+			float fy = flow_at_point[1];
+			if ((fabs(fx) > 999999999.f) || (fabs(fy) > 999999999.f))
+				continue;
+			//printf("HMM: flow fx = %lf, fy = %lf\n", fx, fy);
+			float rad = sqrt(fx * fx + fy * fy);
+			maxrad = maxrad > rad ? maxrad : rad;
+		}
+	}
+
+	for (int i = 0; i < flow.rows; ++i)
+	{
+		for (int j = 0; j < flow.cols; ++j)
+		{
+			uchar *data = color.data + color.step[0] * i + color.step[1] * j;
+			cv::Vec2f flow_at_point = cv::Vec2f(flow[i][j][0], flow[i][j][1]);
+			float fx = flow_at_point[0] / maxrad;
+			float fy = flow_at_point[1] / maxrad;
+			if ((fabs(fx) > 999999999.f) || (fabs(fy) > 999999999.f))
+			{
+				data[0] = data[1] = data[2] = 0;
+				continue;
+			}
+			float rad = sqrt(fx * fx + fy * fy);
+			float angle = atan2(-fy, -fx) / CV_PI;
+			float fk = (angle + 1.0) / 2.0 * (colorwheel.size() - 1);
+			int k0 = (int)fk;
+			int k1 = (k0 + 1) % colorwheel.size();
+			float f = fk - k0;
+			//f = 0; // uncomment to see original color wheel     
+			for (int b = 0; b < 3; b++)
+			{
+				float col0 = colorwheel[k0][b] / 255.0;
+				float col1 = colorwheel[k1][b] / 255.0;
+				float col = (1 - f) * col0 + f * col1;
+				if (rad <= 1)
+					col = 1 - rad * (1 - col); // increase saturation with radius 
+				else
+					col *= .75; // out of range 
+				data[2 - b] = (int)(255.0 * col);
+			}
+		}
+	}
+}
 
 void SuperPatchmatch::WriteFlowFile( const char *flowFile, const cv::Mat_<cv::Vec2f> &flowVec, int height, int width )
 {
+
+	cv::Mat flowCol;
+	MotionToColor(flowVec, flowCol);
+	imwrite("flow.png", flowCol);
+
 	float *fBuffer = new float[height*width*2];
 	int iy, ix;
 	for (iy=0; iy<height; ++iy)
@@ -832,6 +912,7 @@ void SuperPatchmatch::WriteOutImageResult( const cv::Mat &img, const char *resNa
 		sprintf(fileBuf, "%s_%d.png", resName, defaultId);
 		cv::imwrite(fileBuf, img);
 	}
+
 }
 
 
@@ -988,7 +1069,7 @@ void SuperPatchmatch::CrossCheckToCreateConfidenceMask( const cv::Mat_<cv::Vec4f
 
 #pragma region FOR_DAISY_FLOW
 
-#if USE_ENHANCED_DAISY_FLOW_FEATURES
+//#if USE_ENHANCED_DAISY_FLOW_FEATURES
 void SuperPatchmatch::InitializeDaisyFeatures()
 {
 	//const float SCALE_INTERVAL_LEFT = 1.24f; // 1.24f
@@ -1614,7 +1695,7 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 	for (kd=0; kd<dSize; ++kd)
 	{
 		kx = kd*w;
-		cv::Vec2f fl = flowList[kd];
+		cv::Vec4f fl = flowList[kd];
 
 		/*int ty, tx;
 		ty = y+fl[1];
@@ -1664,7 +1745,7 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 #endif
 
 #if USE_ENHANCED_DAISY_FLOW_FEATURES
-	cv::Mat_<float> subLt = subDaisyLeft[pLabel];
+	//cv::Mat_<float> subLt = subDaisyLeft[pLabel];
 
 	//int upHeight, upWidth;
 	//upHeight = imRightUp.rows;
@@ -1676,13 +1757,13 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 	int x = subRangeLeft[py][px][0];
 	int y = subRangeLeft[py][px][1];
 
-	for (int fet=0; fet<w*h; ++fet)
-	{
-		for (int subLine=0; subLine<DAISY_FEATURE_LENGTH*sizeof(float); subLine+=64)
-		{
-			_mm_prefetch(((char *)subLt[fet])+subLine, _MM_HINT_T0);
-		}
-	}
+	//for (int fet=0; fet<w*h; ++fet)
+	//{
+	//	for (int subLine=0; subLine<DAISY_FEATURE_LENGTH*sizeof(float); subLine+=64)
+	//	{
+	//		_mm_prefetch(((char *)subLt[fet])+subLine, _MM_HINT_T0);
+	//	}
+	//}
 
 	int kd;
 	cv::Mat_<float> rawCost;
@@ -1694,11 +1775,68 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 		kx = kd*w;
 		cv::Vec4f fl = flowList[kd];
 
+		//local raw cost
 		cv::Mat_<float> localRc = rawCost(cv::Rect(kx, 0, w, h)); 
 		int scaleId = int(fl[2]);
 		int oriId = int(fl[3]);			
-		NewlyExtractAndComputeSubImageDaisyDescriptorsCost(descRight[scaleId], localRc, subLt,
-			y, x, h, w, fl[1], fl[0], scaleSCoefRight[scaleId], oriAngle[oriId]);
+		//NewlyExtractAndComputeSubImageDaisyDescriptorsCost(descRight[scaleId], localRc, subLt,
+		//	y, x, h, w, fl[1], fl[0], scaleSCoefRight[scaleId], oriAngle[oriId]);
+
+#if USE_SELF_DESCRIPTOR
+		float ssinOri, scosOri;
+		float ori = oriAngle[oriId], step = scaleSCoefRight[scaleId];
+		ssinOri = step*sin((float)ori / 180.0*M_PI);
+		scosOri = step*cos((float)ori / 180.0*M_PI);
+
+		cv::Matx23f tranMat(scosOri, -ssinOri, fl[0], ssinOri, scosOri, fl[1]);
+
+		int upHeight, upWidth;
+		upHeight = imRightUp.rows;
+		upWidth = imRightUp.cols;
+
+
+		int oy = y, ox;
+		for (int cy = 0; cy<h; ++cy, ++oy)
+		{
+			ox = x;
+			for (int cx = 0; cx<w; ++cx, ++ox)
+			{
+
+				int numOfPixels = 0;
+				float pmCost = 0, pmTmp;
+				for (int dy = 0; dy < 1; dy++)
+				{
+					for (int dx = 0; dx < 1; dx++)
+					{
+						cv::Matx31f p0(px + dx, py + dy, 1.0);
+						cv::Matx21f p1 = tranMat*p0;
+
+						int rx = ox + fl[0], ry = oy + fl[1];
+						(ry < 0)? ry = 0: NULL;
+						(ry >= upHeight)? ry = upHeight-1: NULL;
+						(rx < 0)? rx = 0: NULL;
+						(rx >= upWidth)? rx = upWidth-1: NULL;
+
+						//if (p1.val[1]<minVerPosRight || p1.val[1]>maxVerPosRight || p1.val[0]<minHorPosRight || p1.val[0]>maxHorPosRight) continue;
+						
+						numOfPixels++;
+						rx = p1.val[0], ry = p1.val[1];
+					
+						for (int dc = 0; dc < 3; dc++)
+						{
+							//pmTmp = Ndata_C[dc*imLeftOrigin.cols*imLeftOrigin.rows + oy*imLeftOrigin.cols + ox] * Ndata_S1[dc*imRightOrigin.cols*imRightOrigin.rows + ry*imRightOrigin.cols + rx];
+							//pmCost -= pmTmp;
+							pmTmp = imLeftUp[oy][ox][dc] - imRightUp[ry][rx][dc];
+							pmCost += pmTmp * pmTmp;
+						}
+					}
+
+				}
+				pmCost /= numOfPixels;
+				localRc[cy][cx] = pmCost;
+			}
+		}
+#endif
 
 #if USE_TRUNCATED_L2_DISTANCE
 		for (int cy=0; cy<h; ++cy)
@@ -1792,6 +1930,7 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 	int spx = spRangeLeft[py][px][0];
 	int spy = spRangeLeft[py][px][1];
 
+
 	for (kd=0; kd<dSize; ++kd)
 	{
 		kx = kd*w;
@@ -1810,6 +1949,35 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 		// position in sub-image which has a kernel size boundary around superpixel image
 		int sy, sx;
 
+
+#if USE_DEEP_FEATURES
+		//float pmCost = 0, pmTmp;
+		//int numOfPoint = 0, ry, rx;
+		//for (int ly = y; ly < y + h; ly++)
+		//{
+		//	for (int lx = x; lx < x + w; lx++)
+		//	{
+		//		for (int lc = 0; lc < 3; lc++)
+		//		{
+		//			cv::Matx31f p0(lx, ly, 1.0);
+		//			cv::Matx21f p1 = tranMat*p0;
+		//			rx = p1.val[0];
+		//			ry = p1.val[1];
+
+		//			if (p1.val[1]<minVerPosRight || p1.val[1]>maxVerPosRight || p1.val[0]<minHorPosRight || p1.val[0]>maxHorPosRight) continue;
+
+		//			numOfPoint++;
+		//			/*pmTmp = Ndata_C[lc*imLeftOrigin.cols*imLeftOrigin.rows + ly*imLeftOrigin.cols + lx] * Ndata_S1[lc*imRightOrigin.cols*imRightOrigin.rows + ry*imRightOrigin.cols + rx];
+		//			pmCost -= pmTmp;*/
+		//			pmTmp = imLeftOrigin[ly][lx][lc] - imRightOrigin[ry][rx][lc];
+		//			pmCost += pmTmp*pmTmp;
+		//		}
+		//	}
+		//}	
+		//pmCost /= numOfPoint;
+#endif // 0
+
+
 		oy = spy;
 		sy = spy-y;
 		for (iy=0; iy<sph; ++iy, ++oy, ++sy)
@@ -1818,7 +1986,10 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 			sx = spx-x;
 			for (ix=0; ix<spw; ++ix, ++ox, ++sx)
 			{
-				float tmp = filteredCostLeft[sy][kx+sx];
+#if USE_DEEP_FEATURES
+				//filteredCostLeft[sy][kx + sx] = pmCost;
+#endif // USE_DEEP_FEATURES
+				float tmp = filteredCostLeft[sy][kx + sx];
 				if (tmp < bestLeftCost[oy][ox])
 				{
 					cv::Matx31f p0(ox, oy, 1.0);
@@ -1863,7 +2034,7 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListRight( int py, int px, vector<cv:
 	for (kd=0; kd<dSize; ++kd)
 	{
 		kx = kd*w;
-		cv::Vec2f fl = flowList[kd];
+		cv::Vec4f fl = flowList[kd];
 
 		// update label list
 		// spLabelList[pLabel].insert(d);
@@ -2120,7 +2291,7 @@ void SuperPatchmatch::CopySelectedChannelToFloat( const cv::Mat_<cv::Vec4f> &flo
 	}
 }
 
-#endif
+//#endif
 
 void SuperPatchmatch::TransferMaskUsingFlow( const cv::Mat_<cv::Vec3b> &maskIn, const cv::Mat_<cv::Vec2f> &motionFlow, cv::Mat_<cv::Vec3b> &maskOut )
 {
@@ -2380,14 +2551,14 @@ double SuperPatchmatch::CalcDiceCoefficient( const cv::Mat_<cv::Vec3b> &maskIn, 
 int SuperPatchmatch::SetDefaultParameters()
 {
 	// filter kernel related, for GF and CLMF
-	g_filterKernelSize = 9;
+	g_filterKernelSize = 4;
 	g_filterKernelBoundarySize = 2*g_filterKernelSize;
 	g_filterKernelColorTau = 25;
 	g_filterKernelEpsl = 100;
 
 	// superpixel related
 	g_spMethod = 0;
-	g_spNumber = 300;
+	g_spNumber = 50;
 	g_spSize = 300;
 	g_spSizeOrNumber = 1;
 
@@ -2403,6 +2574,10 @@ int SuperPatchmatch::SetDefaultParameters()
 	useMaskTransfer = false;
 	hasGtFlow = false;
 	refMaxMotion = -1.0;
+
+#if USE_DEEP_FEATURES
+	channels = 256;
+#endif
 
 	return 0;
 }
@@ -2427,9 +2602,14 @@ int SuperPatchmatch::CreateAndOrganizeSuperpixels()
 		GetSubImageRangeFromSegments(labelRight, numLabelRight, g_filterKernelBoundarySize, subRight, spRight);
 	}
 
+	//added by yy: for drawing
+	char *WINDOW_SEGMENT_CONTOUR = "segement_contour";
+	char *WINDOW_SEGMENT_CONTOUR_RIGHT = "segement_contour_right";
+	cvNamedWindow(WINDOW_SEGMENT_CONTOUR, CV_WINDOW_AUTOSIZE);
+	cvNamedWindow(WINDOW_SEGMENT_CONTOUR_RIGHT, CV_WINDOW_AUTOSIZE);
 
 	// draw out the segmented image
-	/*if (g_spMethod == 0 || g_spMethod == 1)
+	if (g_spMethod == 0 || g_spMethod == 1)
 	{
 	cv::Mat_<cv::Vec3b> resImg;
 	DrawContoursAroundSegments(img1, labelLeft, resImg);
@@ -2439,7 +2619,7 @@ int SuperPatchmatch::CreateAndOrganizeSuperpixels()
 	cv::imshow(WINDOW_SEGMENT_CONTOUR_RIGHT, resImgRight);
 	WriteOutImageResult(resImg, WINDOW_SEGMENT_CONTOUR, 0);
 	WriteOutImageResult(resImgRight, WINDOW_SEGMENT_CONTOUR_RIGHT, 0);
-	}*/
+	}
 
 
 	printf("==================================================\n");
@@ -2471,3 +2651,58 @@ int SuperPatchmatch::CreateAndOrganizeSuperpixels()
 
 	return 0;
 }
+
+#if USE_DEEP_FEATURES
+void SuperPatchmatch::ReadDeepFeatures(string file_C, string file_S1){
+	std::ifstream input;
+	float tmp;
+
+	Ndata_C = (float *)malloc(sizeof(float)*imLeftOrigin.cols*imLeftOrigin.rows*channels);
+	Ndata_S1 = (float *)malloc(sizeof(float)*imRightOrigin.cols*imRightOrigin.rows*channels);
+
+	input.open(file_C);
+	
+	input >> tmp;
+
+	for (int iy = 0; iy < imLeftOrigin.rows; iy++)
+	{
+		for (int ix = 0; ix < imLeftOrigin.cols; ix++)
+		{
+			for (int ic = 0; ic < channels; ic++)
+			{
+				input >> Ndata_C[ic*imLeftOrigin.cols*imLeftOrigin.rows + iy*imLeftOrigin.cols + ix];
+				//cout << "Now input C : " << Ndata_C[ic*imLeftOrigin.cols*imLeftOrigin.rows + iy*imLeftOrigin.cols + ix];
+			}
+		}
+	}
+
+	input.close();
+	input.open(file_S1);
+
+	input >> tmp;
+
+
+	for (int iy = 0; iy < imRightOrigin.rows; iy++)
+	{
+		for (int ix = 0; ix < imRightOrigin.cols; ix++)
+		{
+			for (int ic = 0; ic < channels; ic++)
+			{
+				input >> Ndata_S1[ic*imRightOrigin.cols*imRightOrigin.rows + iy*imRightOrigin.cols + ix];
+				//cout << "Now input S1 : " << Ndata_S1[ic*imRightOrigin.cols*imRightOrigin.rows + iy*imRightOrigin.cols + ix];
+
+			}
+		}
+	}
+
+	input.close();
+
+}
+
+void SuperPatchmatch::FreeData(){
+	free(Ndata_C);
+	free(Ndata_S1);
+}
+
+
+#endif

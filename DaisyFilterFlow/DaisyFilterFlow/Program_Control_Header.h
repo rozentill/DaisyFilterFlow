@@ -9,15 +9,17 @@
 #define USE_CLMF0_TO_AGGREGATE_COST 0
 #define USE_CLMF1_TO_AGGREGATE_COST 0
 // guided image filter
-#define USE_GF_TO_FILTER_COST 1
+#define USE_GF_TO_FILTER_COST 0
 // box filter, like patch wise descriptor matching
 #define USE_BOXFILTER_TO_AGGREGATE_COST 0
 // no filter is applied, worked like per descriptor matching
-#define NO_AGGREGATE_COST 0
+#define NO_AGGREGATE_COST 1
 
 // [added] - 2013-03-06, for sift flow
 #define USE_COLOR_FEATURES 0
 #define USE_ENHANCED_DAISY_FLOW_FEATURES 1
+#define USE_DEEP_FEATURES 1
+#define USE_SELF_DESCRIPTOR 1
 #define DAISY_FEATURE_LAYERS 2
 #define DAISY_FEATURE_LENGTH 136
 

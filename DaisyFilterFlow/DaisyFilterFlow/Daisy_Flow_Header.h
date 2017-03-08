@@ -1,5 +1,6 @@
 #include "opencv2/opencv.hpp"
-
+#include <iostream>
+#include <fstream>
 #include <cmath>
 #include <ctime>
 #include <cstdlib>
@@ -53,6 +54,8 @@ public:
 	float minVerPosRight, maxVerPosRight, verRangeRight;
 
 public:
+	
+
 	// sub-image range and super-pixel range
 	// {0: left, 1: up, 2: right, 3: down}
 	cv::Mat_<cv::Vec4i> subRangeLeft, subRangeRight;
@@ -153,13 +156,13 @@ public:
 	// [added] - 2013-03-06, for sift flow
 	cv::Mat_<uchar> imgGrayLeft, imgGrayRight;
 
-#if USE_ENHANCED_DAISY_FLOW_FEATURES
+
 	// [added] - 2013-03-20
 	enum
 	{
 		MAX_SCALE_LEVEL_LEFT = 1,
-		MAX_SCALE_LEVEL_RIGHT = 5, //5
-		MAX_ORIENTATION_LEVEL = 7, // 7 selectable value: 1, 3, 5, 7, 13		
+		MAX_SCALE_LEVEL_RIGHT = 1, //5
+		MAX_ORIENTATION_LEVEL = 1, // 7 selectable value: 1, 3, 5, 7, 13		
 	};
 	static const int BASE_DESCRIPTOR_SIZE = 16;
 
@@ -191,7 +194,7 @@ public:
 	// for visualization
 	void CopyFirstTwoChannelsToFlow(const cv::Mat_<cv::Vec4f> &flIn, cv::Mat_<cv::Vec2f> &flOut);
 	void CopySelectedChannelToFloat(const cv::Mat_<cv::Vec4f> &floatIn, int selCh, cv::Mat_<float> &floatOut);
-
+#if USE_ENHANCED_DAISY_FLOW_FEATURES
 #endif
 
 	void CreateMaskedImage(const cv::Mat_<cv::Vec3b> &imgIn, const cv::Mat_<uchar> &mask, cv::Mat_<cv::Vec3b> &imgOut);
@@ -254,6 +257,14 @@ public:
 	bool DO_LEFT;
 	// process right to left frame flow
 	bool DO_RIGHT;
+
+#if USE_DEEP_FEATURES
+	//deep feature
+	float *Ndata_C, *Ndata_S1;
+	int channels;
+	void ReadDeepFeatures(string file_C, string file_S1);
+	void FreeData();
+#endif
 };
 
 
