@@ -1820,7 +1820,7 @@ void SuperPatchmatch::ImproveDaisyFlowLabelListLeft( int py, int px, vector<cv::
 						//if (p1.val[1]<minVerPosRight || p1.val[1]>maxVerPosRight || p1.val[0]<minHorPosRight || p1.val[0]>maxHorPosRight) continue;
 						
 						numOfPixels++;
-						rx = p1.val[0], ry = p1.val[1];
+						//rx = p1.val[0], ry = p1.val[1];
 					
 						for (int dc = 0; dc < 3; dc++)
 						{
@@ -2551,14 +2551,14 @@ double SuperPatchmatch::CalcDiceCoefficient( const cv::Mat_<cv::Vec3b> &maskIn, 
 int SuperPatchmatch::SetDefaultParameters()
 {
 	// filter kernel related, for GF and CLMF
-	g_filterKernelSize = 4;
+	g_filterKernelSize = 9;
 	g_filterKernelBoundarySize = 2*g_filterKernelSize;
 	g_filterKernelColorTau = 25;
 	g_filterKernelEpsl = 100;
 
 	// superpixel related
 	g_spMethod = 0;
-	g_spNumber = 50;
+	g_spNumber = 500;
 	g_spSize = 300;
 	g_spSizeOrNumber = 1;
 
